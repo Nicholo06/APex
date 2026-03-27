@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+frida-tools
+google-generativeai
+python-dotenv
+apktool-py
+scapy

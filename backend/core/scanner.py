@@ -1,0 +1,63 @@
+import os
+import re
+import subprocess
+from backend.config import config
+
+class APKScanner:
+    def __init__(self, apk_path):
+        self.apk_path = apk_path
+        self.output_dir = os.path.join(config.TEMP_DECOMPILED_PATH, os.path.basename(apk_path).replace(".apk", ""))
+
+    def decompile(self):
+        """Decompiles the APK using apktool-py (via command line)"""
+        print(f"Decompiling {self.apk_path} to {self.output_dir}...")
+        if not os.path.exists(config.TEMP_DECOMPILED_PATH):
+            os.makedirs(config.TEMP_DECOMPILED_PATH)
+        
+        # Using subprocess to call apktool directly
+        try:
+            subprocess.run(["apktool", "d", self.apk_path, "-o", self.output_dir, "-f"], check=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"Decompilation failed: {e}")
+            return False
+
+    def find_security_logic(self):
+        """Searches for SSL pinning and root detection patterns in Smali files"""
+        patterns = {
+            "ssl_pinning": [
+                r"X509TrustManager",
+                r"checkClientTrusted",
+                r"checkServerTrusted",
+                r"SSLContext",
+                r"CertificatePinner"
+            ],
+            "root_detection": [
+                r"/system/app/Superuser.apk",
+                r"root-checker",
+                r"which su",
+                r"test-keys"
+            ]
+        }
+        
+        results = []
+        for root, dirs, files in os.walk(self.output_dir):
+            for file in files:
+                if file.endswith(".smali"):
+                    file_path = os.path.join(root, file)
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                        for category, regex_list in patterns.items():
+                            for regex in regex_list:
+                                if re.search(regex, content, re.IGNORECASE):
+                                    # Extract the relevant block (simple heuristic: 20 lines around match)
+                                    match = re.search(regex, content, re.IGNORECASE)
+                                    start = max(0, content.rfind('.method', 0, match.start()))
+                                    end = content.find('.end method', match.end()) + 11
+                                    if start != -1 and end != -1:
+                                        results.append({
+                                            "file": file_path,
+                                            "category": category,
+                                            "code": content[start:end]
+                                        })
+        return results
