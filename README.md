@@ -1,9 +1,11 @@
 # APex: AI-Powered APK Explorer & Exfiltrator
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python Version">
-  <img src="https://img.shields.io/badge/AI-Gemini%20|%20Claude-orange.svg" alt="AI Powered">
-  <img src="https://img.shields.io/badge/Framework-FastAPI-009688.svg" alt="FastAPI">
+  <img src="https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python Version">
+  <img src="https://img.shields.io/badge/AI-Gemini-4285F4?style=for-the-badge&logo=google-gemini&logoColor=white" alt="Gemini">
+  <img src="https://img.shields.io/badge/AI-Claude-D97757?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude">
+  <img src="https://img.shields.io/badge/AI-OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white" alt="OpenAI">
+  <img src="https://img.shields.io/badge/FastAPI-005850?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI">
 </p>
 
 **APex** is an advanced Android security orchestration suite designed to bridge the gap between static analysis and dynamic instrumentation. By integrating Large Language Models (LLMs) directly into the reverse-engineering workflow, APex automates the discovery and bypassing of complex security controls like SSL pinning and root detection.
