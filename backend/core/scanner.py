@@ -14,9 +14,9 @@ class APKScanner:
         if not os.path.exists(config.TEMP_DECOMPILED_PATH):
             os.makedirs(config.TEMP_DECOMPILED_PATH)
         
-        # Using subprocess to call apktool directly
+        # Using subprocess to call pyapktool which manages dependencies automatically
         try:
-            subprocess.run(["apktool", "d", self.apk_path, "-o", self.output_dir, "-f"], check=True)
+            subprocess.run(["pyapktool", "d", self.apk_path, "-o", self.output_dir, "-f"], check=True)
             return True
         except subprocess.CalledProcessError as e:
             print(f"Decompilation failed: {e}")
