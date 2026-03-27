@@ -4,6 +4,7 @@ import sys
 import json
 import os
 import shutil
+import subprocess
 from backend.core.scanner import APKScanner
 from backend.core.dynamic import FridaOrchestrator
 from backend.core.dumper import ADBDumper
@@ -20,19 +21,36 @@ def print_header():
     print(clr("🛡️  APEX: AI-Powered APK Explorer & Exfiltrator", "96;1").center(width))
     print(clr("=" * 60, "96").center(width) + "\n")
 
+def check_dependencies():
+    """Check if Java is installed since pyapktool needs it"""
+    try:
+        subprocess.run(["java", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=True)
+    except FileNotFoundError:
+        print(clr("[!] Warning: Java (JRE) not found. APK scanning will fail.", "91"))
+
 def interactive_menu():
+    check_dependencies()
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
         print_header()
         width = shutil.get_terminal_size().columns
         
-        print(clr("[ MAIN MENU ]", "93").center(width))
-        print("1. 🔍 Scan APK (Static Analysis)".center(width))
-        print("2. 💉 Inject Frida Script (Dynamic)".center(width))
-        print("3. 🤖 Generate AI Bypass Hook".center(width))
-        print("4. 💾 Exfiltrate App Data (ADB)".center(width))
-        print("5. 📜 List Local Scripts".center(width))
-        print("0. 🚪 Exit".center(width))
+        # Center the menu as a consistent block
+        menu_items = [
+            clr("[ MAIN MENU ]", "93"),
+            "1. 🔍 Scan APK (Static Analysis)",
+            "2. 💉 Inject Frida Script (Dynamic)",
+            "3. 🤖 Generate AI Bypass Hook",
+            "4. 💾 Exfiltrate App Data (ADB)",
+            "5. 📜 List Local Scripts",
+            "0. 🚪 Exit"
+        ]
+        
+        # Calculate indentation for the whole block to be centered
+        # Max length of menu items (ignoring color codes) is around 40
+        for item in menu_items:
+            print(item.center(width))
+            
         print("\n" + clr("-" * 20, "90").center(width))
         
         choice = input(clr("\nSelect an option > ", "92")).strip()
@@ -44,13 +62,16 @@ def interactive_menu():
                 if scanner.decompile():
                     findings = scanner.find_security_logic()
                     print(clr("\n[+] Findings:", "92"))
-                    print(json.dumps(findings, indent=2))
+                    if not findings:
+                        print("No specific security patterns found.")
+                    else:
+                        print(json.dumps(findings, indent=2))
                 else: print(clr("[-] Decompilation failed.", "91"))
             else: print(clr("[-] File not found.", "91"))
 
         elif choice == '2':
             pkg = input(clr("Enter Package Name: ", "94")).strip()
-            script = input(clr("Enter Script Name (e.g. universal.js): ", "94")).strip()
+            script = input(clr("Enter Script Name: ", "94")).strip()
             orch = FridaOrchestrator(pkg)
             if orch.attach_and_inject(script): print(clr("[+] Injection Success!", "92"))
             else: print(clr("[-] Injection Failed.", "91"))
@@ -64,6 +85,8 @@ def interactive_menu():
                     provider = AIProviderFactory.get_provider()
                     hook = provider.generate_hook(code, cat)
                     out = os.path.join(config.FRIDA_SCRIPTS_PATH, "ai_generated.js")
+                    if not os.path.exists(config.FRIDA_SCRIPTS_PATH):
+                        os.makedirs(config.FRIDA_SCRIPTS_PATH)
                     with open(out, "w") as f: f.write(hook)
                     print(clr(f"\n[+] Saved to {out}\n", "92") + clr(hook, "93"))
                 except Exception as e: print(clr(f"[-] AI Error: {e}", "91"))
@@ -73,6 +96,7 @@ def interactive_menu():
             pkg = input(clr("Enter Package Name: ", "94")).strip()
             dumper = ADBDumper(pkg)
             results = dumper.pull_data()
+            print(clr("\n[+] Exfiltration Results:", "92"))
             for r in results:
                 status = "✅" if r['status'] == 'pulled' else "❌"
                 print(f"  {status} {r['target']}")
@@ -80,6 +104,7 @@ def interactive_menu():
         elif choice == '5':
             scripts = FridaOrchestrator(None).list_scripts()
             print(clr("\n[+] Script Library:", "92"))
+            if not scripts: print("  (No scripts found in frida-scripts/)")
             for s in scripts: print(f"  - {s}")
 
         elif choice == '0':
@@ -93,7 +118,6 @@ def main():
     parser.add_argument('-h', '--help', action='help')
     subparsers = parser.add_subparsers(dest="command")
     
-    # Define subparsers for CLI (keeping argument support)
     scan_p = subparsers.add_parser("scan")
     scan_p.add_argument("apk_path")
     
@@ -109,14 +133,12 @@ def main():
     
     subparsers.add_parser("list-scripts")
 
-    # If no arguments, enter INTERACTIVE MODE
     if len(sys.argv) == 1:
         interactive_menu()
         return
 
     args = parser.parse_args()
 
-    # (Logic for CLI arguments - similar to interactive blocks above)
     if args.command == "scan":
         scanner = APKScanner(args.apk_path)
         if scanner.decompile(): print(json.dumps(scanner.find_security_logic(), indent=2))
