@@ -71,7 +71,7 @@ The goal of APex is to reduce the manual effort required during mobile applicati
 2. **Setup Environment:**
    ```bash
    pip install -r requirements.txt
-   cp .env.example .env # Add your Google API Key here
+   cp .env.example .env # Add your AI API Key here
    ```
 
 ---
