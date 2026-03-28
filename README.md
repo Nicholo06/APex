@@ -12,17 +12,17 @@
 
 ---
 
-## 📖 Table of Contents
-- [🎯 Project Goals](#-project-goals)
-- [✨ Key Features](#-key-features)
-- [🚀 Getting Started](#-getting-started)
-- [📖 Usage Guide](#-usage-guide)
-- [🤝 Contributing](#-contributing)
-- [⚖️ Disclaimer](#-disclaimer)
+## Table of Contents
+- [Project Goals](#-project-goals)
+- [Key Features](#-key-features)
+- [Getting Started](#-getting-started)
+- [Usage Guide](#-usage-guide)
+- [Contributing](#-contributing)
+- [Disclaimer](#-disclaimer)
 
 ---
 
-## 🎯 Project Goals
+## Project Goals
 
 The goal of APex is to reduce the manual effort required during mobile application penetration tests by:
 *   **Automating the "Boring" Stuff:** Fast-track APK decompilation, secret sniffing, and permission auditing.
@@ -51,7 +51,7 @@ The goal of APex is to reduce the manual effort required during mobile applicati
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 
 ### Prerequisites
