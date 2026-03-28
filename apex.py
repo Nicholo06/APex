@@ -107,6 +107,43 @@ def select_package(device_id=None):
     except: pass
     return choice if choice else None
 
+def print_findings(scanner, findings):
+    left_print("\n[+] STATIC ANALYSIS RESULTS:")
+    if not findings:
+        left_print("    No specific security patterns found.")
+    else:
+        # Group by category
+        summary = {}
+        for f in findings:
+            cat = f['category']
+            if cat not in summary: summary[cat] = []
+            summary[cat].append(f)
+        
+        for cat, items in summary.items():
+            unique_files = {f['file'] for f in items}
+            left_print(f"\n    [!] {cat.upper()} ({len(unique_files)} unique locations)")
+            
+            # Show top 5 unique findings
+            seen_matches = set()
+            count = 0
+            for item in items:
+                if item['match'] in seen_matches: continue
+                seen_matches.add(item['match'])
+                
+                rel = os.path.relpath(item['file'], scanner.output_dir)
+                val = item['match']
+                if len(val) > 60: val = val[:57] + "..."
+                
+                left_print(f"        -> {rel}")
+                left_print(f"           Match: {val}")
+                
+                count += 1
+                if count >= 5: break
+                
+            if len(seen_matches) > 5:
+                left_print(f"        ... and {len(seen_matches)-5} more unique findings")
+    print("")
+
 def interactive_menu():
     check_dependencies()
     current_device = None
@@ -143,11 +180,7 @@ def interactive_menu():
                 scanner = APKScanner(path)
                 if scanner.decompile():
                     findings = scanner.find_security_logic()
-                    left_print("\n[+] Findings:")
-                    if not findings:
-                        left_print("No specific security patterns found.")
-                    else:
-                        print(json.dumps(findings, indent=2))
+                    print_findings(scanner, findings)
                 else: left_print("[-] Decompilation failed.")
             else: left_print("[-] File not found.")
 
@@ -248,7 +281,9 @@ def main():
 
     if args.command == "scan":
         scanner = APKScanner(args.apk_path)
-        if scanner.decompile(): print(json.dumps(scanner.find_security_logic(), indent=2))
+        if scanner.decompile():
+            findings = scanner.find_security_logic()
+            print_findings(scanner, findings)
     elif args.command == "list-scripts":
         for s in FridaOrchestrator(None).list_scripts(): print(f"  - {s}")
     elif args.command == "inject":
