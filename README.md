@@ -64,8 +64,8 @@ The goal of APex is to reduce the manual effort required during mobile applicati
 
 1. **Clone & Enter Folder:**
    ```bash
-   git clone https://github.com/your-username/apex-toolkit.git
-   cd apex-toolkit
+   git clone https://github.com/your-username/APex.git
+   cd APex
    ```
 
 2. **Setup Environment:**
