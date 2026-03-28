@@ -27,10 +27,15 @@ class ADBDumper:
 
         for target in targets:
             try:
-                # Use adb pull to download the directory
-                print(f"Pulling from {target}...")
-                subprocess.run(adb_base + ["pull", target, self.output_dir], check=True)
+                # Use adb -s <device> pull to download the directory
+                cmd = ["adb"]
+                if config.ACTIVE_DEVICE_ID:
+                    cmd += ["-s", config.ACTIVE_DEVICE_ID]
+                cmd += ["pull", target, self.output_dir]
+
+                subprocess.run(cmd, check=True, capture_output=True)
                 results.append({"target": target, "status": "pulled"})
+
             except subprocess.CalledProcessError as e:
                 print(f"Failed to pull {target}: {e}")
                 results.append({"target": target, "status": "failed", "error": str(e)})

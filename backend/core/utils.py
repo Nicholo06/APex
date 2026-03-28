@@ -1,58 +1,32 @@
 import subprocess
-import frida
+import re
 
-class AndroidUtils:
-    @staticmethod
-    def list_devices():
-        """Lists connected Android devices via Frida"""
-        try:
-            return [d for d in frida.enumerate_devices() if d.type == 'usb']
-        except Exception as e:
-            print(f"Error listing devices: {e}")
-            return []
+def list_adb_devices():
+    """Returns a list of connected ADB devices"""
+    try:
+        output = subprocess.run(["adb", "devices"], capture_output=True, text=True, check=True).stdout
+        lines = output.strip().split('\n')[1:] # Skip header
+        devices = []
+        for line in lines:
+            if line.strip():
+                parts = re.split(r'\s+', line)
+                if len(parts) >= 2:
+                    devices.append({"id": parts[0], "status": parts[1]})
+        return devices
+    except Exception as e:
+        return []
 
-    @staticmethod
-    def list_packages(device_id=None):
-        """Lists installed packages on a specific device using adb"""
+def list_installed_packages(device_id=None):
+    """Returns a list of 3rd party installed packages on the device"""
+    try:
         cmd = ["adb"]
         if device_id:
-            cmd.extend(["-s", device_id])
-        cmd.extend(["shell", "pm", "list", "packages", "-3"]) # Only 3rd party apps by default
+            cmd += ["-s", device_id]
+        cmd += ["shell", "pm", "list", "packages", "-3"] # -3 filters for 3rd party apps
         
-        try:
-            output = subprocess.check_output(cmd).decode("utf-8")
-            packages = [line.split(":")[1].strip() for line in output.splitlines() if line.startswith("package:")]
-            return sorted(packages)
-        except subprocess.CalledProcessError as e:
-            print(f"Error listing packages: {e}")
-            return []
-
-    @staticmethod
-    def is_rooted(device_id=None):
-        """Checks if the device has root access via adb"""
-        cmd = ["adb"]
-        if device_id:
-            cmd.extend(["-s", device_id])
-        cmd.extend(["shell", "which", "su"])
-        try:
-            subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-            return True
-        except:
-            return False
-
-    @staticmethod
-    def verify_frida_environment(device):
-        """Verifies if frida-server is running and accessible on the device"""
-        try:
-            device.enumerate_processes()
-            return True, "Frida server is running and accessible."
-        except Exception as e:
-            if "unable to find process" in str(e).lower() or "connection refused" in str(e).lower():
-                return False, "Frida server is not running or not reachable. Ensure frida-server is started as root on the device."
-            return False, f"Frida error: {e}"
-
-    @staticmethod
-    def search_packages(query, device_id=None):
-        """Filters installed packages based on a query"""
-        packages = AndroidUtils.list_packages(device_id)
-        return [p for p in packages if query.lower() in p.lower()]
+        output = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+        packages = [line.replace("package:", "").strip() for line in output.strip().split('\n') if line.strip()]
+        return sorted(packages)
+    except Exception as e:
+        print(f"[-] Error listing packages: {e}")
+        return []

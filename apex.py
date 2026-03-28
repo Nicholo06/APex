@@ -12,6 +12,7 @@ from backend.core.dynamic import FridaOrchestrator
 from backend.core.dumper import ADBDumper
 from backend.ai.provider import AIProviderFactory
 from backend.config import config
+from backend.core.utils import list_adb_devices, list_installed_packages
 
 # Global indentation
 INDENT = "    "
@@ -30,17 +31,16 @@ def print_header():
             print(INDENT + line)
     print()
 
-def c_input(prompt_text="", newline=True):
+def c_input(prompt_text="", newline=True, indicator="> "):
     if prompt_text:
         if newline:
             print(INDENT + f"{prompt_text}")
-            return input(INDENT + "> ").strip()
+            return input(INDENT + indicator).strip()
         else:
-            return input(INDENT + f"{prompt_text} > ").strip()
-    return input(INDENT + "> ").strip()
+            return input(INDENT + f"{prompt_text} {indicator}").strip()
+    return input(INDENT + indicator).strip()
 
 def print_progress_bar(current, total, prefix="Analyzing APK"):
-    """Displays an indented progress bar"""
     width = 40
     percent = float(current) * 100 / total
     filled = int(width * current // total)
@@ -51,52 +51,38 @@ def print_progress_bar(current, total, prefix="Analyzing APK"):
         print()
 
 def run_task_with_loading(task_func, prefix="Decompiling APK"):
-    """Runs a task in a thread and displays a simulated progress bar"""
     done = False
     result = [None]
-
     def target():
         nonlocal done
         result[0] = task_func()
         done = True
-
     thread = threading.Thread(target=target)
     thread.start()
-
     current = 0
-    total = 100
     while not done:
-        if current < 95:
-            current += 1
-        print_progress_bar(current, total, prefix=prefix)
+        if current < 95: current += 1
+        print_progress_bar(current, 100, prefix=prefix)
         time.sleep(0.1)
-
     print_progress_bar(100, 100, prefix=prefix)
     return result[0]
 
 def print_report(data):
-    """Prints a professional, indented security report"""
     print("\n" + INDENT + "=" * 60)
     print(INDENT + "MOBILE SECURITY SCAN REPORT")
     print(INDENT + "=" * 60 + "\n")
-
     m = data["Manifest Risks"]
     print(INDENT + "[ MANIFEST CONFIGURATION ]")
     print(INDENT + f"  - Debuggable:      {'[!!] YES' if m['debuggable'] else 'No'}")
     print(INDENT + f"  - Allow Backup:    {'[!] YES' if m['allow_backup'] else 'No'}")
     print(INDENT + f"  - Cleartext HTTP:  {'[!] YES' if m['cleartext_traffic'] else 'No'}")
-    
     if m["permissions"]:
         print(INDENT + "  - Sensitive Perms: " + ", ".join(m["permissions"]))
-    
     if m["exported_components"]:
         print(INDENT + "  - Exported Components:")
         for comp in m["exported_components"][:5]:
             print(INDENT + f"    * {comp}")
-        if len(m["exported_components"]) > 5:
-            print(INDENT + f"    (... {len(m['exported_components'])-5} more)")
     print()
-
     print(INDENT + "[ CODE-LEVEL FINDINGS ]")
     findings_found = False
     for category, findings in data["Code Findings"].items():
@@ -107,7 +93,6 @@ def print_report(data):
             for f in findings:
                 if f["type"] not in grouped: grouped[f["type"]] = []
                 grouped[f["type"]].append(f)
-            
             for ftype, instances in grouped.items():
                 print(INDENT + f"    - {ftype} ({len(instances)} instances)")
                 for inst in instances[:2]:
@@ -115,16 +100,41 @@ def print_report(data):
                     if inst['matches']:
                         val = inst['matches'][0][:50] + "..." if len(inst['matches'][0]) > 50 else inst['matches'][0]
                         print(INDENT + f"        Match: {val}")
-    
-    if not findings_found:
-        print(INDENT + "  - No critical code vulnerabilities detected.")
-    
+    if not findings_found: print(INDENT + "  - No critical code vulnerabilities detected.")
     print("\n" + INDENT + "=" * 60)
 
+def select_package():
+    """Helper to list and select a package from the active device"""
+    packages = list_installed_packages(config.ACTIVE_DEVICE_ID)
+    if not packages:
+        print(INDENT + "[-] No 3rd party packages found on device.")
+        return None
+    
+    print(INDENT + "[ SELECT PACKAGE ]")
+    for i, pkg in enumerate(packages):
+        print(INDENT + f"{i+1}. {pkg}")
+    
+    sel = c_input("\nEnter number")
+    try:
+        return packages[int(sel)-1]
+    except:
+        print(INDENT + "[-] Invalid selection.")
+        return None
+
 def interactive_menu():
+    # Initial Auto-detect
+    devices = list_adb_devices()
+    if devices:
+        config.ACTIVE_DEVICE_ID = devices[0]["id"]
+
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
         print_header()
+        
+        status = "CONNECTED" if config.ACTIVE_DEVICE_ID else "NOT CONNECTED"
+        dev_id = config.ACTIVE_DEVICE_ID if config.ACTIVE_DEVICE_ID else "None"
+        print(INDENT + f"[ STATUS: {status} ]")
+        print(INDENT + f"[ ACTIVE DEVICE: {dev_id} ]\n")
         
         print(INDENT + "[ MAIN MENU ]")
         print()
@@ -143,33 +153,44 @@ def interactive_menu():
             print(INDENT + item)
             
         print("\n" + INDENT + "-" * 20)
-        
         choice = c_input("Select an option")
-
         print()
 
         if choice == '1':
             path = c_input("Enter APK path")
             if os.path.exists(path):
                 scanner = APKScanner(path)
-                # Run decompilation with loading bar
-                success = run_task_with_loading(scanner.decompile, prefix="Decompiling APK")
-                
-                if success:
-                    # Run static analysis with real progress bar
+                if run_task_with_loading(scanner.decompile, prefix="Decompiling APK"):
                     report = scanner.find_security_logic(progress_callback=print_progress_bar)
                     print_report(report)
-                else:
-                    print(INDENT + "[-] Decompilation failed.")
-            else:
-                print(INDENT + "[-] File not found.")
+                else: print(INDENT + "[-] Decompilation failed.")
+            else: print(INDENT + "[-] File not found.")
 
         elif choice == '2':
-            pkg = c_input("Enter Package Name")
-            script = c_input("Enter Script Name")
-            orch = FridaOrchestrator(pkg)
-            if orch.attach_and_inject(script): print(INDENT + "[+] Injection Success!")
-            else: print(INDENT + "[-] Injection Failed.")
+            if not config.ACTIVE_DEVICE_ID:
+                print(INDENT + "[-] No device connected. Use Option 6 first.")
+                continue
+                
+            pkg = select_package()
+            if pkg:
+                print()
+                orch = FridaOrchestrator(pkg)
+                scripts = orch.list_scripts()
+                if not scripts:
+                    print(INDENT + "[-] No scripts found in frida-scripts/ folder.")
+                else:
+                    print(INDENT + "[ SELECT SCRIPT ]")
+                    for i, s in enumerate(scripts):
+                        print(INDENT + f"{i+1}. {s}")
+                    s_sel = c_input("\nEnter number")
+                    try:
+                        script_name = scripts[int(s_sel)-1]
+                        print(f"\n{INDENT}[*] Injecting {script_name} into {pkg}...")
+                        if orch.attach_and_inject(script_name):
+                            print(INDENT + "[+] Injection Success! Press Enter to keep process alive.")
+                            input()
+                        else: print(INDENT + "[-] Injection Failed.")
+                    except: print(INDENT + "[-] Invalid selection.")
 
         elif choice == '3':
             file_path = c_input("Enter path to Smali snippet file")
@@ -180,41 +201,56 @@ def interactive_menu():
                     provider = AIProviderFactory.get_provider()
                     hook = provider.generate_hook(code, cat)
                     out = os.path.join(config.FRIDA_SCRIPTS_PATH, "ai_generated.js")
-                    if not os.path.exists(config.FRIDA_SCRIPTS_PATH):
-                        os.makedirs(config.FRIDA_SCRIPTS_PATH)
+                    if not os.path.exists(config.FRIDA_SCRIPTS_PATH): os.makedirs(config.FRIDA_SCRIPTS_PATH)
                     with open(out, "w") as f: f.write(hook)
                     print(f"\n{INDENT}[+] Saved to {out}")
                     print(INDENT + "-" * 20)
                     for line in hook.split('\n'): print(INDENT + line)
                     print(INDENT + "-" * 20)
-                except Exception as e: print(INDENT + f"[-] AI Error: {e}")
+                except Exception as e: print(f"[-] AI Error: {e}")
             else: print(INDENT + "[-] File not found.")
 
         elif choice == '4':
-            pkg = c_input("Enter Package Name")
-            dumper = ADBDumper(pkg)
-            results = dumper.pull_data()
-            print("\n" + INDENT + "[+] Exfiltration Results:")
-            for r in results:
-                status = "V" if r['status'] == 'pulled' else "X"
-                print(INDENT + f"  {status} {r['target']}")
+            if not config.ACTIVE_DEVICE_ID:
+                print(INDENT + "[-] No device connected. Use Option 6 first.")
+                continue
+                
+            pkg = select_package()
+            if pkg:
+                print(f"\n{INDENT}[*] Exfiltrating data from {pkg}...")
+                dumper = ADBDumper(pkg)
+                results = dumper.pull_data()
+                print("\n" + INDENT + "[+] Exfiltration Results:")
+                for r in results:
+                    status = "V" if r['status'] == 'pulled' else "X"
+                    print(f"{INDENT}  {status} {r['target']}")
 
         elif choice == '5':
             scripts = FridaOrchestrator(None).list_scripts()
             print("\n" + INDENT + "[+] Script Library:\n")
             if not scripts: print(INDENT + "(No scripts found in frida-scripts/)")
-            for s in scripts:
-                print(indent + f"  - {s}")
+            for s in scripts: print(INDENT + f"  - {s}")
 
         elif choice == '6':
-            print(INDENT + "[*] Feature coming soon: Select/Change ADB Device")
+            devices = list_adb_devices()
+            if not devices:
+                print(INDENT + "[-] No devices found. Ensure ADB is running and device is connected.")
+            else:
+                print(INDENT + "[ SELECT DEVICE ]")
+                for i, dev in enumerate(devices):
+                    print(INDENT + f"{i+1}. {dev['id']} ({dev['status']})")
+                sel = c_input("Enter number")
+                try:
+                    config.ACTIVE_DEVICE_ID = devices[int(sel)-1]["id"]
+                    print(INDENT + f"[+] Selected: {config.ACTIVE_DEVICE_ID}")
+                except: print(INDENT + "[-] Invalid selection.")
 
         elif choice == '0':
             print(INDENT + "Exiting APex...")
             break
         
         print()
-        c_input("Press Enter to return to menu", newline=False)
+        c_input("Press Enter to return to menu", newline=False, indicator="")
 
 def main():
     parser = argparse.ArgumentParser(description="🛡️  APex CLI", add_help=False)

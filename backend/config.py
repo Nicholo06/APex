@@ -10,5 +10,6 @@ class Config:
     FRIDA_SCRIPTS_PATH = os.getenv("FRIDA_SCRIPTS_PATH", "./frida-scripts")
     TEMP_DECOMPILED_PATH = "./temp_decompiled"
     DOWNLOADS_PATH = "./downloads"
+    ACTIVE_DEVICE_ID = None # Stores the selected ADB device ID
 
 config = Config()
