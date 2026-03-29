@@ -9,16 +9,22 @@ class LootExplorer:
     def list_sessions(self):
         """Lists all package sessions in the downloads folder"""
         if not os.path.exists(self.downloads_path):
+            os.makedirs(self.downloads_path)
             return []
         return [d for d in os.listdir(self.downloads_path) if os.path.isdir(os.path.join(self.downloads_path, d))]
 
     def list_files(self, package_name):
-        """Lists all files exfiltrated for a specific package"""
+        """Lists all files exfiltrated for a specific package recursively"""
         session_path = os.path.join(self.downloads_path, package_name)
+        if not os.path.exists(session_path):
+            return []
+            
         file_list = []
         for root, _, files in os.walk(session_path):
             for f in files:
-                file_list.append(os.path.relpath(os.path.join(root, f), session_path))
+                # Get the relative path from the session root
+                rel_path = os.path.relpath(os.path.join(root, f), session_path)
+                file_list.append(rel_path)
         return sorted(file_list)
 
     def explore_db(self, package_name, db_rel_path):
@@ -34,10 +40,12 @@ class LootExplorer:
             
             results = {"tables": {}}
             for table in tables:
-                cursor.execute(f"SELECT * FROM {table} LIMIT 10")
-                columns = [description[0] for description in cursor.description]
-                rows = cursor.fetchall()
-                results["tables"][table] = {"columns": columns, "rows": rows}
+                try:
+                    cursor.execute(f"SELECT * FROM \"{table}\" LIMIT 10")
+                    columns = [description[0] for description in cursor.description]
+                    rows = cursor.fetchall()
+                    results["tables"][table] = {"columns": columns, "rows": rows}
+                except: continue
             
             conn.close()
             return results
@@ -50,7 +58,6 @@ class LootExplorer:
         try:
             with open(xml_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
-                # Basic pretty print if it's valid XML
                 try:
                     dom = xml.dom.minidom.parseString(content)
                     return dom.toprettyxml()

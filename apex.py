@@ -111,8 +111,13 @@ def print_report(data):
     print("\n" + INDENT + "=" * 60)
 
 def select_package():
+    if not config.ACTIVE_DEVICE_ID:
+        print(INDENT + "[-] No device connected. Use Option 8 first.")
+        return None
     packages = list_installed_packages(config.ACTIVE_DEVICE_ID)
-    if not packages: return None
+    if not packages:
+        print(INDENT + "[-] No 3rd party packages found on device.")
+        return None
     print(INDENT + "[ SELECT PACKAGE ]")
     for i, pkg in enumerate(packages): print(INDENT + f"{i+1}. {pkg}")
     print()
@@ -144,17 +149,7 @@ def interactive_menu():
         print(INDENT + f"[ ACTIVE DEVICE: {dev_id} ]\n")
         print(INDENT + "[ MAIN MENU ]\n")
 
-        menu_items = [
-            "1. Scan APK (Static Analysis)",
-            "2. Inject Frida Script (Dynamic)",
-            "3. Intent Lab (Component Testing)",
-            "4. Exfiltrate App Data (ADB)",
-            "5. Loot Explorer (Browse Data)",
-            "6. Hook Template Generator",
-            "7. List Local Scripts",
-            "8. Select/Change Device",
-            "0. Exit"
-        ]
+        menu_items = ["1. Scan APK (Static Analysis)", "2. Inject Frida Script (Dynamic)", "3. Intent Lab (Component Testing)", "4. Exfiltrate App Data (ADB)", "5. Loot Explorer (Browse Data)", "6. Hook Template Generator", "7. List Local Scripts", "8. Select/Change Device", "0. Exit"]
         for item in menu_items: print(INDENT + item)
         print("\n" + INDENT + "-" * 20)
         choice = c_input("Select an option")
@@ -172,10 +167,8 @@ def interactive_menu():
                     if run_task_with_loading(scanner.decompile, prefix="Decompiling APK"):
                         print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
                     else: print(INDENT + "[-] Decompilation failed.")
-            c_input("Press Enter to return to menu", newline=False, indicator="")
 
         elif choice == '2':
-            if not config.ACTIVE_DEVICE_ID: continue
             pkg = select_package()
             if pkg:
                 orch = FridaOrchestrator(pkg)
@@ -189,22 +182,16 @@ def interactive_menu():
                     except: pass
 
         elif choice == '3':
-            if not config.ACTIVE_DEVICE_ID: continue
             pkg = select_package()
             if pkg:
-                print(f"\n{INDENT}[*] Fetching exported components for {pkg}...")
-                # We need a scanner object to find the manifest findings
-                # For simplicity, we assume the user has scanned the app once
                 lab = IntentLab(pkg)
                 print(INDENT + "[ INTENT LAB - MANUAL TRIGGER ]")
                 comp_name = c_input("Enter Component Name (from Scan Report)")
                 comp_type = c_input("Type (activity/receiver)")
                 if comp_name and comp_type:
                     lab.trigger_component(comp_name, comp_type)
-            c_input("Press Enter to return to menu", newline=False, indicator="")
 
         elif choice == '4':
-            if not config.ACTIVE_DEVICE_ID: continue
             pkg = select_package()
             if pkg:
                 dumper = ADBDumper(pkg)
@@ -213,13 +200,12 @@ def interactive_menu():
                 for r in results:
                     status = "V" if r['status'] == 'pulled' else "X"
                     print(f"{INDENT}  {status} {r['target']}")
-            c_input("Press Enter to return to menu", newline=False, indicator="")
 
         elif choice == '5':
             explorer = LootExplorer(config.DOWNLOADS_PATH)
             sessions = explorer.list_sessions()
             if not sessions:
-                print(INDENT + "[-] No exfiltrated data found in downloads/ folder.")
+                print(INDENT + "[-] No exfiltrated data found.")
             else:
                 print(INDENT + "[ SELECT LOOT SESSION ]")
                 for i, s in enumerate(sessions): print(INDENT + f"{i+1}. {s}")
@@ -228,23 +214,25 @@ def interactive_menu():
                 try:
                     pkg_name = sessions[int(s_sel)-1]
                     files = explorer.list_files(pkg_name)
-                    print(f"\n{INDENT}[ FILES IN {pkg_name} ]")
-                    for i, f in enumerate(files): print(INDENT + f"{i+1}. {f}")
-                    print()
-                    f_sel = c_input("Select file to view/explore")
-                    file_rel_path = files[int(f_sel)-1]
-                    
-                    if file_rel_path.endswith(".db"):
-                        db_data = explorer.explore_db(pkg_name, file_rel_path)
-                        for table, content in db_data.get("tables", {}).items():
-                            print(f"\n{INDENT}--- TABLE: {table} ---")
-                            print(INDENT + " | ".join(content["columns"]))
-                            for row in content["rows"]: print(INDENT + " | ".join(map(str, row)))
+                    if not files:
+                        print(INDENT + "[-] No files found in this session.")
                     else:
-                        print(f"\n{INDENT}--- FILE CONTENT ---")
-                        print(explorer.view_xml(pkg_name, file_rel_path))
+                        print(f"\n{INDENT}[ FILES IN {pkg_name} ]")
+                        for i, f in enumerate(files): print(INDENT + f"{i+1}. {f}")
+                        print()
+                        f_sel = c_input("Select file number to view")
+                        file_rel_path = files[int(f_sel)-1]
+                        
+                        if file_rel_path.endswith(".db"):
+                            db_data = explorer.explore_db(pkg_name, file_rel_path)
+                            for table, content in db_data.get("tables", {}).items():
+                                print(f"\n{INDENT}--- TABLE: {table} ---")
+                                print(INDENT + " | ".join(content["columns"]))
+                                for row in content["rows"]: print(INDENT + " | ".join(map(str, row)))
+                        else:
+                            print(f"\n{INDENT}--- FILE CONTENT ---")
+                            print(explorer.view_xml(pkg_name, file_rel_path))
                 except: print(INDENT + "[-] Invalid selection.")
-            c_input("Press Enter to return to menu", newline=False, indicator="")
 
         elif choice == '6':
             templates = HookTemplates()
@@ -263,17 +251,16 @@ def interactive_menu():
                 for line in code.split('\n'): print(INDENT + line)
                 print(INDENT + "-" * 20)
             except: print(INDENT + "[-] Invalid selection.")
-            c_input("Press Enter to return to menu", newline=False, indicator="")
 
         elif choice == '7':
             scripts = FridaOrchestrator(None).list_scripts()
             print("\n" + INDENT + "[+] Script Library:\n")
             for s in scripts: print(INDENT + f"  - {s}")
-            c_input("Press Enter to return to menu", newline=False, indicator="")
 
         elif choice == '8':
             devices = list_adb_devices()
-            if devices:
+            if not devices: print(INDENT + "[-] No devices found.")
+            else:
                 print(INDENT + "[ SELECT DEVICE ]")
                 for i, dev in enumerate(devices): print(INDENT + f"{i+1}. {dev['id']} ({dev['status']})")
                 print()
@@ -282,6 +269,8 @@ def interactive_menu():
                 except: pass
 
         elif choice == '0': break
+        print()
+        c_input("Press Enter to return to menu", newline=False, indicator="")
 
 def main():
     parser = argparse.ArgumentParser(description="🛡️  APex CLI", add_help=False)
@@ -290,6 +279,5 @@ def main():
     if len(sys.argv) == 1: interactive_menu()
     else:
         args = parser.parse_args()
-        # Non-interactive mode support can be added back here if needed
 
 if __name__ == "__main__": main()
