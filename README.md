@@ -1,39 +1,39 @@
-# APex: AI-Powered APK Explorer and Exfiltrator
+# APex: Advanced APK Explorer and Exfiltrator
 
-**APex** is an *AI-powered* advanced Android security orchestration suite and a robust wrapper for the Frida framework. It is designed to bridge the gap between static analysis and dynamic instrumentation. By integrating Large Language Models (LLMs) directly into the reverse-engineering workflow, APex automates the discovery and bypassing of complex security controls like SSL pinning and root detection.
+**APex** is a professional Android security orchestration suite and a robust wrapper for the Frida framework. It is designed to automate the gap between static analysis and dynamic instrumentation. The tool provides a unified, hyper-contextual CLI environment for rapid security auditing, data exfiltration, and runtime manipulation of Android applications.
 
 ---
 
 ## Project Goals
 
-The goal of **APex** is to reduce the manual effort required during mobile application penetration tests by:
-* **Automating the Boring Stuff:** Fast-track APK decompilation, secret sniffing, and permission auditing.
-* **Bridging RE Gaps with AI:** Use AI to interpret obfuscated Smali logic and generate functional Frida hooks.
-* **Centralizing Exfiltration:** Provide a one-click solution for dumping sensitive app data (databases, native libs, configurations).
-* **Interactive Workflow:** A menu-driven CLI for rapid mobile security auditing.
-* **Frida Integration:** Acting as a streamlined wrapper for the Frida framework to simplify dynamic analysis.
+The goal of **APex** is to streamline the mobile application penetration testing lifecycle by:
+* **Automating Analysis:** High-speed APK decompilation, manifest auditing, and secret sniffing.
+* **Simplifying Instrumentation:** Acting as a streamlined wrapper for the Frida framework to manage spawning, attachment, and session lifecycles.
+* **Integrated Exfiltration:** Providing a one-click solution for dumping and interactively exploring sensitive app data.
+* **Focused Workflow:** A context-aware CLI that dynamically adapts its tools based on the active application in focus.
 
 ---
 
 ## Key Features
 
 ### 1. Intelligent Static Analysis (SAST)
-* **AI-Powered Scanning:** Leverages LLMs to identify and analyze complex security logic.
-* **Automated Decompilation:** Uses pyapktool to decompile APKs for immediate inspection.
-* **Logic Extraction:** Automatically hunts for SSL pinning and root detection patterns in Smali files.
-* **Vulnerability Detection:** Scans for manifest misconfigurations, hardcoded secrets, and insecure code patterns.
+* **Noise-Filtered Scanning:** Automatically filters out Android framework resources to focus exclusively on high-risk application logic and sensitive assets.
+* **Manifest Auditing:** Detects critical misconfigurations including debuggable flags, insecure backup settings, and cleartext traffic permissions.
+* **Deep Secret Sniffing:** Scans for hardcoded AWS keys, Google API tokens, Firebase URLs, and private certificates across Smali, JSON, and XML files.
+* **Report Caching:** Automatically persists scan results to enable near-instant loading of previous security sessions.
 
 ### 2. Dynamic Instrumentation (DAST)
-* **Frida Wrapper:** Provides a high-level interface for the Frida framework, managing spawning, attachment, and script injection.
-* **BYOS Logic:** Dedicated directory for custom scripts with auto-detection and selection.
-* **Real-time Logging:** Streams output from Frida scripts directly to the console.
+* **Frida Wrapper:** Leverages the native Frida CLI for maximum stability while managing the complexities of process spawning and script injection.
+* **Multi-Layer Termination:** Implements standard and root-level force-stop sequences to ensure the application and all API connections are fully severed upon exit.
+* **Real-time Logging:** Streams standard output and error messages from Frida scripts directly to the consolidated APex console.
 
-### 3. AI-Assisted Bypass Engine
-* **Surgical Hooking:** Extracts relevant Smali code for failed security checks.
-* **LLM Integration:** Connects to Gemini, Claude, or OpenAI to generate custom JS hooks tailored specifically to the application.
+### 3. Exfiltrate and Explore Loot
+* **Root-Hop Exfiltration:** Uses an automated root-hop method to copy protected data from the application's internal storage to a local environment.
+* **Interactive Loot Explorer:** A built-in browser for exfiltrated data, featuring a robust SQLite table viewer and an automated XML/JSON pretty-printer.
+* **Binary Safety:** Automatically detects non-text files and provides safe hex dumps for binary inspection.
 
-### 4. Data Exfiltration Suite
-* **ADB Dumper:** Automatically pulls SQLite databases, shared preferences, and native libraries from the device storage.
+### 4. Hook Template Generator
+* **Reliable Boilerplates:** Provides a library of industry-standard Frida templates for SSL pinning bypass, root detection removal, and Keystore auditing.
 
 ---
 
@@ -41,9 +41,9 @@ The goal of **APex** is to reduce the manual effort required during mobile appli
 
 ### Prerequisites
 - Python 3.10+
-- Java (JRE/JDK) in your system PATH (required for APK decompilation).
-- ADB in your system PATH.
-- A rooted Android device or emulator with frida-server running.
+- Java (JRE/JDK) in your system PATH (required for APKTool operations).
+- ADB (Android Debug Bridge) in your system PATH.
+- A rooted Android device or emulator with frida-server running in /data/local/tmp/.
 
 ### Installation
 
@@ -56,35 +56,31 @@ The goal of **APex** is to reduce the manual effort required during mobile appli
 2. Setup Environment:
    ```bash
    pip install -r requirements.txt
-   cp .env.example .env # Add your AI API Key here
    ```
 
 ---
 
 ## Usage Guide
 
-To start the tool, run:
+APex features a hyper-contextual menu system. To start the tool, run:
 ```bash
 python apex.py
 ```
 
 ### 1. Scan APK
-Select **Option 1** and provide the path to your APK. APex will decompile it and generate a comprehensive security report covering manifest misconfigurations, hardcoded secrets, and insecure code patterns.
+Select Option 1 to begin. You can analyze a new APK file or load a previous session. APex will generate a comprehensive security report covering manifest risks, sensitive assets, and code-level findings.
 
 ### 2. Inject Frida Script
-Select **Option 2** to inject a script into a running app. APex will list installed 3rd-party packages and available scripts for selection. It then launches the app using the Frida framework wrapper and automatically terminates the process upon exit.
+Once a session is active, select Option 2 to inject a script. APex automatically targets the active application, lists your local script library, and launches the app using the native Frida wrapper.
 
-### 3. Generate AI Hook
-Select **Option 3** if you encounter a security check that standard scripts cannot bypass. Provide the path to a text file containing the Smali code, and APex will use AI to generate a surgical Frida hook.
+### 3. Exfiltrate and Explore Loot
+Select Option 3 to pull the app's internal databases and shared preferences. Once exfiltrated, APex immediately opens the Loot Explorer, allowing you to browse SQLite tables and view configuration files directly in the terminal.
 
-### 4. Exfiltrate Data
-Select **Option 4** to dump internal app data. APex pulls databases and native libraries from the device and saves them to the local downloads folder.
+### 4. Hook Template Generator
+Select Option 4 to generate functional Frida bypass scripts. Templates are saved to the local script folder and are ready for immediate injection.
 
-### 5. List Local Scripts
-Select **Option 5** to view all JavaScript files currently available in your local script library.
-
-### 6. Select/Change Device
-Select **Option 6** to automatically detect connected Android devices or emulators and switch the active target for all operations.
+### 5. Switch App / New Scan
+Select Option 5 to clear the current context and return to the main menu to target a different application.
 
 ---
 
