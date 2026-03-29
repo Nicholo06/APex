@@ -50,6 +50,17 @@ class APKScanner:
                 json.dump(report, f, indent=4)
         except: pass
 
+    def get_package_name(self):
+        """Extracts the package name from AndroidManifest.xml"""
+        if not os.path.exists(self.manifest_path):
+            return None
+        try:
+            tree = ET.parse(self.manifest_path)
+            root = tree.getroot()
+            return root.get('package')
+        except:
+            return None
+
     def find_manifest_risks(self):
         """Parses AndroidManifest.xml for misconfigurations"""
         risks = {"permissions": [], "exported_components": [], "debuggable": False, "allow_backup": True, "cleartext_traffic": False}

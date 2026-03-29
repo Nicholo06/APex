@@ -25,7 +25,7 @@ BANNER = r"""
  /_/  |_/_/    \___/_/|_|  
 """
 
-def print_header(current_session=None):
+def print_header(current_session=None, active_pkg=None):
     print()
     for line in BANNER.split('\n'):
         if line.strip():
@@ -35,7 +35,9 @@ def print_header(current_session=None):
     dev_id = config.ACTIVE_DEVICE_ID if config.ACTIVE_DEVICE_ID else "None"
     print(INDENT + f"[ STATUS: {status} | DEVICE: {dev_id} ]")
     if current_session:
-        print(INDENT + f"[ ACTIVE SESSION: {current_session} ]")
+        session_str = f"{current_session}"
+        if active_pkg: session_str += f" ({active_pkg})"
+        print(INDENT + f"[ ACTIVE SESSION: {session_str} ]")
     print()
 
 def c_input(prompt_text="", newline=True, indicator="> "):
@@ -162,12 +164,12 @@ def explore_loot_workflow(package_name):
 def interactive_menu():
     devices = list_adb_devices()
     if devices: config.ACTIVE_DEVICE_ID = devices[0]["id"]
-    current_session = None # Directory name of decompiled app
-    active_pkg = None      # Actual package name for ADB/Frida
+    current_session = None # Directory name
+    active_pkg = None      # Actual package name
 
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
-        print_header(current_session)
+        print_header(current_session, active_pkg)
         print(INDENT + "[ MAIN MENU ]")
         
         if not current_session:
@@ -188,7 +190,6 @@ def interactive_menu():
         choice = c_input("Select an option")
         print()
 
-        # Logic for NO SESSION
         if not current_session:
             if choice == '1':
                 path = c_input("Enter APK path")
@@ -196,6 +197,7 @@ def interactive_menu():
                     scanner = APKScanner(apk_path=path)
                     if run_task_with_loading(scanner.decompile, prefix="Decompiling APK"):
                         current_session = os.path.basename(scanner.output_dir)
+                        active_pkg = scanner.get_package_name()
                         print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
                         c_input("Press Enter to continue", newline=False, indicator="")
                 else: print(INDENT + "[-] File not found.")
@@ -203,6 +205,8 @@ def interactive_menu():
                 dir_name = select_previous_session()
                 if dir_name:
                     current_session = dir_name
+                    scanner = APKScanner(existing_dir=os.path.join(config.TEMP_DECOMPILED_PATH, dir_name))
+                    active_pkg = scanner.get_package_name()
             elif choice == '3':
                 devices = list_adb_devices()
                 if devices:
@@ -213,22 +217,15 @@ def interactive_menu():
                     try: config.ACTIVE_DEVICE_ID = devices[int(sel)-1]["id"]
                     except: pass
             elif choice == '0': break
-
-        # Logic for ACTIVE SESSION
         else:
             if choice == '1':
                 scanner = APKScanner(existing_dir=os.path.join(config.TEMP_DECOMPILED_PATH, current_session))
                 report = scanner.load_cached_report()
-                if report:
-                    print(INDENT + "[*] Loading cached report...")
-                    print_report(report)
-                else:
-                    print(INDENT + "[*] Running scan...")
-                    print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
+                if not report: report = scanner.find_security_logic(progress_callback=print_progress_bar)
+                print_report(report)
                 c_input("Press Enter to continue", newline=False, indicator="")
             
             elif choice == '2': # Inject
-                # Try to resolve package name from session folder if not set
                 if not active_pkg: active_pkg = select_package()
                 if active_pkg:
                     orch = FridaOrchestrator(active_pkg)
@@ -294,7 +291,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
     if len(sys.argv) == 1: interactive_menu()
     else:
-        # Command line arg support here...
-        pass
+        # Simple non-interactive scan support
+        args = parser.parse_args()
 
 if __name__ == "__main__": main()
