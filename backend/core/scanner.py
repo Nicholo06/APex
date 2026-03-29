@@ -6,14 +6,21 @@ import xml.etree.ElementTree as ET
 from backend.config import config
 
 class APKScanner:
-    def __init__(self, apk_path):
+    def __init__(self, apk_path=None, existing_dir=None):
         self.apk_path = apk_path
-        self.output_dir = os.path.normpath(os.path.join(config.TEMP_DECOMPILED_PATH, os.path.basename(apk_path).replace(".apk", "")))
+        if existing_dir:
+            self.output_dir = os.path.normpath(existing_dir)
+        elif apk_path:
+            self.output_dir = os.path.normpath(os.path.join(config.TEMP_DECOMPILED_PATH, os.path.basename(apk_path).replace(".apk", "")))
+        
         self.manifest_path = os.path.join(self.output_dir, "AndroidManifest.xml")
         self.apktool_jar = os.path.join("pyapktool_tools", "apktool.jar")
 
     def decompile(self):
         """Decompiles the APK using the managed apktool.jar directly"""
+        if not self.apk_path:
+            return False
+            
         if not os.path.exists(config.TEMP_DECOMPILED_PATH):
             os.makedirs(config.TEMP_DECOMPILED_PATH)
 
@@ -79,9 +86,8 @@ class APKScanner:
             "Sensitive Assets": []
         }
         
-        # 1. Walk through all files to find sensitive assets (.env, config, etc)
+        # 1. Walk through all files to find sensitive assets
         sensitive_exts = [".env", ".json", ".xml", ".properties", ".conf", ".ini"]
-        asset_files = []
         all_scan_files = []
         
         for root, dirs, files in os.walk(self.output_dir):
@@ -89,16 +95,14 @@ class APKScanner:
                 full_path = os.path.join(root, file)
                 rel_path = os.path.relpath(full_path, self.output_dir)
                 
-                # Check for sensitive filenames/extensions
                 if any(ext in file.lower() for ext in sensitive_exts) or ".env" in file.lower():
-                    # Only flag assets/res files as sensitive assets
                     if "assets" in rel_path or "res" in rel_path:
                         report["Sensitive Assets"].append(rel_path)
                 
                 if file.endswith(".smali") or file.endswith(".env") or file.endswith(".json"):
                     all_scan_files.append(full_path)
 
-        # 2. Run regex scan on identified files
+        # 2. Run regex scan
         total_files = len(all_scan_files)
         for idx, file_path in enumerate(all_scan_files):
             if progress_callback: progress_callback(idx + 1, total_files)

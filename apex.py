@@ -71,29 +71,20 @@ def print_report(data):
     print("\n" + INDENT + "=" * 60)
     print(INDENT + "MOBILE SECURITY SCAN REPORT")
     print(INDENT + "=" * 60 + "\n")
-    
-    # 1. Manifest Analysis
     m = data["Manifest Risks"]
     print(INDENT + "[ MANIFEST CONFIGURATION ]")
     print(INDENT + f"  - Debuggable:      {'[!!] YES' if m['debuggable'] else 'No'}")
     print(INDENT + f"  - Allow Backup:    {'[!] YES' if m['allow_backup'] else 'No'}")
     print(INDENT + f"  - Cleartext HTTP:  {'[!] YES' if m['cleartext_traffic'] else 'No'}")
-    if m["permissions"]:
-        print(INDENT + "  - Sensitive Perms: " + ", ".join(m["permissions"]))
+    if m["permissions"]: print(INDENT + "  - Sensitive Perms: " + ", ".join(m["permissions"]))
     if m["exported_components"]:
         print(INDENT + "  - Exported Components:")
-        for comp in m["exported_components"][:5]:
-            print(INDENT + f"    * {comp}")
+        for comp in m["exported_components"][:5]: print(INDENT + f"    * {comp}")
     print()
-
-    # 2. Asset Analysis
     if data.get("Sensitive Assets"):
         print(INDENT + "[ SENSITIVE FILES IN ASSETS ]")
-        for asset in data["Sensitive Assets"]:
-            print(INDENT + f"  - [!] {asset}")
+        for asset in data["Sensitive Assets"]: print(INDENT + f"  - [!] {asset}")
         print()
-
-    # 3. Code Findings
     print(INDENT + "[ CODE-LEVEL FINDINGS ]")
     findings_found = False
     for category, findings in data["Code Findings"].items():
@@ -116,17 +107,12 @@ def print_report(data):
 
 def select_package():
     packages = list_installed_packages(config.ACTIVE_DEVICE_ID)
-    if not packages:
-        print(INDENT + "[-] No 3rd party packages found on device.")
-        return None
+    if not packages: return None
     print(INDENT + "[ SELECT PACKAGE ]")
-    for i, pkg in enumerate(packages):
-        print(INDENT + f"{i+1}. {pkg}")
+    for i, pkg in enumerate(packages): print(INDENT + f"{i+1}. {pkg}")
     sel = c_input("\nEnter number")
     try: return packages[int(sel)-1]
-    except:
-        print(INDENT + "[-] Invalid selection.")
-        return None
+    except: return None
 
 def interactive_menu():
     devices = list_adb_devices()
@@ -141,24 +127,39 @@ def interactive_menu():
         print(INDENT + f"[ ACTIVE DEVICE: {dev_id} ]\n")
         print(INDENT + "[ MAIN MENU ]\n")
 
-        menu_items = [
-            "1. Scan APK (Static Analysis)",
-            "2. Inject Frida Script (Dynamic)",
-            "3. Generate AI Bypass Hook",
-            "4. Exfiltrate App Data (ADB)",
-            "5. List Local Scripts",
-            "6. Select/Change Device",
-            "0. Exit"
-        ]
+        menu_items = ["1. Scan APK (Static Analysis)", "2. Inject Frida Script (Dynamic)", "3. Generate AI Bypass Hook", "4. Exfiltrate App Data (ADB)", "5. List Local Scripts", "6. Select/Change Device", "0. Exit"]
         for item in menu_items: print(INDENT + item)
         print("\n" + INDENT + "-" * 20)
         choice = c_input("Select an option")
         print()
 
         if choice == '1':
+            prev_scans = []
+            if os.path.exists(config.TEMP_DECOMPILED_PATH):
+                prev_scans = [d for d in os.listdir(config.TEMP_DECOMPILED_PATH) if os.path.isdir(os.path.join(config.TEMP_DECOMPILED_PATH, d))]
+            
+            if prev_scans:
+                print(INDENT + "[ SCAN OPTIONS ]")
+                print(INDENT + "1. Analyze New APK")
+                print(INDENT + "2. Rescan Previous Session")
+                sub_choice = c_input("Select an option")
+                
+                if sub_choice == '2':
+                    print(INDENT + "[ SELECT PREVIOUS SESSION ]")
+                    for i, s in enumerate(prev_scans): print(INDENT + f"{i+1}. {s}")
+                    s_sel = c_input("\nEnter number")
+                    try:
+                        dir_name = prev_scans[int(s_sel)-1]
+                        scanner = APKScanner(existing_dir=os.path.join(config.TEMP_DECOMPILED_PATH, dir_name))
+                        report = scanner.find_security_logic(progress_callback=print_progress_bar)
+                        print_report(report)
+                    except: print(INDENT + "[-] Invalid selection.")
+                    c_input("Press Enter to return to menu", newline=False, indicator="")
+                    continue
+
             path = c_input("Enter APK path")
             if os.path.exists(path):
-                scanner = APKScanner(path)
+                scanner = APKScanner(apk_path=path)
                 if run_task_with_loading(scanner.decompile, prefix="Decompiling APK"):
                     report = scanner.find_security_logic(progress_callback=print_progress_bar)
                     print_report(report)
@@ -171,13 +172,12 @@ def interactive_menu():
             if pkg:
                 orch = FridaOrchestrator(pkg)
                 scripts = orch.list_scripts()
-                if not scripts: print(INDENT + "[-] No scripts found.")
-                else:
+                if scripts:
                     print(INDENT + "[ SELECT SCRIPT ]")
                     for i, s in enumerate(scripts): print(INDENT + f"{i+1}. {s}")
                     s_sel = c_input("\nEnter number")
                     try: orch.attach_and_inject(scripts[int(s_sel)-1])
-                    except: print(INDENT + "[-] Invalid selection.")
+                    except: pass
 
         elif choice == '3':
             file_path = c_input("Enter path to Smali snippet file")
@@ -193,7 +193,7 @@ def interactive_menu():
                     print(f"\n{INDENT}[+] Saved to {out}\n{INDENT}" + "-" * 20)
                     for line in hook.split('\n'): print(INDENT + line)
                     print(INDENT + "-" * 20)
-                except Exception as e: print(INDENT + f"[-] AI Error: {e}")
+                except Exception as e: print(f"{INDENT}[-] AI Error: {e}")
 
         elif choice == '4':
             if not config.ACTIVE_DEVICE_ID: continue
@@ -213,13 +213,12 @@ def interactive_menu():
 
         elif choice == '6':
             devices = list_adb_devices()
-            if not devices: print(INDENT + "[-] No devices found.")
-            else:
+            if devices:
                 print(INDENT + "[ SELECT DEVICE ]")
                 for i, dev in enumerate(devices): print(INDENT + f"{i+1}. {dev['id']} ({dev['status']})")
                 sel = c_input("Enter number")
                 try: config.ACTIVE_DEVICE_ID = devices[int(sel)-1]["id"]
-                except: print(INDENT + "[-] Invalid selection.")
+                except: pass
 
         elif choice == '0': break
         print()
