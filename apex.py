@@ -11,7 +11,6 @@ from backend.core.scanner import APKScanner
 from backend.core.dynamic import FridaOrchestrator
 from backend.core.dumper import ADBDumper
 from backend.core.explorer import LootExplorer
-from backend.core.intent_lab import IntentLab
 from backend.core.templates import HookTemplates
 from backend.config import config
 from backend.core.utils import list_adb_devices, list_installed_packages
@@ -26,11 +25,18 @@ BANNER = r"""
  /_/  |_/_/    \___/_/|_|  
 """
 
-def print_header():
+def print_header(current_session=None):
     print()
     for line in BANNER.split('\n'):
         if line.strip():
             print(INDENT + line)
+    print()
+    
+    status = "CONNECTED" if config.ACTIVE_DEVICE_ID else "NOT CONNECTED"
+    dev_id = config.ACTIVE_DEVICE_ID if config.ACTIVE_DEVICE_ID else "None"
+    print(INDENT + f"[ STATUS: {status} | DEVICE: {dev_id} ]")
+    if current_session:
+        print(INDENT + f"[ ACTIVE SESSION: {current_session} ]")
     print()
 
 def c_input(prompt_text="", newline=True, indicator="> "):
@@ -112,12 +118,10 @@ def print_report(data):
 
 def select_package():
     if not config.ACTIVE_DEVICE_ID:
-        print(INDENT + "[-] No device connected. Use Option 8 first.")
+        print(INDENT + "[-] No device connected. Use Option 2 first.")
         return None
     packages = list_installed_packages(config.ACTIVE_DEVICE_ID)
-    if not packages:
-        print(INDENT + "[-] No 3rd party packages found on device.")
-        return None
+    if not packages: return None
     print(INDENT + "[ SELECT PACKAGE ]")
     for i, pkg in enumerate(packages): print(INDENT + f"{i+1}. {pkg}")
     print()
@@ -133,42 +137,86 @@ def select_previous_session():
     for i, s in enumerate(prev_scans): print(INDENT + f"{i+1}. {s}")
     print()
     s_sel = c_input("Enter number")
-    try: return os.path.join(config.TEMP_DECOMPILED_PATH, prev_scans[int(s_sel)-1])
+    try: return prev_scans[int(s_sel)-1]
     except: return None
+
+def explore_loot_workflow(package_name):
+    explorer = LootExplorer(config.DOWNLOADS_PATH)
+    files = explorer.list_files(package_name)
+    if not files:
+        print(INDENT + "[-] No files found in this session.")
+        return
+    
+    print(f"\n{INDENT}[ FILES IN {package_name} ]")
+    for i, f in enumerate(files): print(INDENT + f"{i+1}. {f}")
+    print()
+    f_sel = c_input("Select file number to view")
+    try:
+        file_rel_path = files[int(f_sel)-1]
+        if file_rel_path.endswith(".db"):
+            db_data = explorer.explore_db(package_name, file_rel_path)
+            for table, content in db_data.get("tables", {}).items():
+                print(f"\n{INDENT}--- TABLE: {table} ---")
+                print(INDENT + " | ".join(content["columns"]))
+                for row in content["rows"]: print(INDENT + " | ".join(map(str, row)))
+        else:
+            print(f"\n{INDENT}--- FILE CONTENT ---")
+            print(explorer.view_xml(package_name, file_rel_path))
+    except: print(INDENT + "[-] Invalid selection.")
 
 def interactive_menu():
     devices = list_adb_devices()
     if devices: config.ACTIVE_DEVICE_ID = devices[0]["id"]
+    
+    current_session = None
 
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
-        print_header()
-        status = "CONNECTED" if config.ACTIVE_DEVICE_ID else "NOT CONNECTED"
-        dev_id = config.ACTIVE_DEVICE_ID if config.ACTIVE_DEVICE_ID else "None"
-        print(INDENT + f"[ STATUS: {status} ]")
-        print(INDENT + f"[ ACTIVE DEVICE: {dev_id} ]\n")
-        print(INDENT + "[ MAIN MENU ]\n")
-
-        menu_items = ["1. Scan APK (Static Analysis)", "2. Inject Frida Script (Dynamic)", "3. Intent Lab (Component Testing)", "4. Exfiltrate App Data (ADB)", "5. Loot Explorer (Browse Data)", "6. Hook Template Generator", "7. List Local Scripts", "8. Select/Change Device", "0. Exit"]
-        for item in menu_items: print(INDENT + item)
+        print_header(current_session)
+        
+        print(INDENT + "[ MAIN MENU ]")
+        print(INDENT + "1. Scan APK (Static Analysis)")
+        print(INDENT + "2. Select/Change Device")
+        
+        # Only show advanced tools if a scan has been performed
+        if current_session:
+            print(INDENT + "3. Inject Frida Script (Dynamic)")
+            print(INDENT + "4. Exfiltrate & Explore Loot")
+            print(INDENT + "5. Hook Template Generator")
+            print(INDENT + "6. List Local Scripts")
+        
+        print(INDENT + "0. Exit")
         print("\n" + INDENT + "-" * 20)
         choice = c_input("Select an option")
         print()
 
         if choice == '1':
-            dir_path = select_previous_session()
-            if dir_path:
-                scanner = APKScanner(existing_dir=dir_path)
+            dir_name = select_previous_session()
+            if dir_name:
+                current_session = dir_name
+                scanner = APKScanner(existing_dir=os.path.join(config.TEMP_DECOMPILED_PATH, dir_name))
                 print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
             else:
                 path = c_input("Enter APK path")
                 if os.path.exists(path):
                     scanner = APKScanner(apk_path=path)
                     if run_task_with_loading(scanner.decompile, prefix="Decompiling APK"):
+                        current_session = os.path.basename(scanner.output_dir)
                         print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
                     else: print(INDENT + "[-] Decompilation failed.")
+            c_input("Press Enter to return to menu", newline=False, indicator="")
 
         elif choice == '2':
+            devices = list_adb_devices()
+            if devices:
+                print(INDENT + "[ SELECT DEVICE ]")
+                for i, dev in enumerate(devices): print(INDENT + f"{i+1}. {dev['id']} ({dev['status']})")
+                print()
+                sel = c_input("Enter number")
+                try: config.ACTIVE_DEVICE_ID = devices[int(sel)-1]["id"]
+                except: pass
+
+        elif choice == '3' and current_session:
             pkg = select_package()
             if pkg:
                 orch = FridaOrchestrator(pkg)
@@ -181,60 +229,22 @@ def interactive_menu():
                     try: orch.attach_and_inject(scripts[int(s_sel)-1])
                     except: pass
 
-        elif choice == '3':
-            pkg = select_package()
-            if pkg:
-                lab = IntentLab(pkg)
-                print(INDENT + "[ INTENT LAB - MANUAL TRIGGER ]")
-                comp_name = c_input("Enter Component Name (from Scan Report)")
-                comp_type = c_input("Type (activity/receiver)")
-                if comp_name and comp_type:
-                    lab.trigger_component(comp_name, comp_type)
-
-        elif choice == '4':
+        elif choice == '4' and current_session:
             pkg = select_package()
             if pkg:
                 dumper = ADBDumper(pkg)
+                print(f"{INDENT}[*] Pulling data from {pkg}...")
                 results = dumper.pull_data()
                 print("\n" + INDENT + "[+] Exfiltration Results:")
                 for r in results:
                     status = "V" if r['status'] == 'pulled' else "X"
                     print(f"{INDENT}  {status} {r['target']}")
+                
+                print(f"\n{INDENT}[*] Entering Loot Explorer for {pkg}...")
+                explore_loot_workflow(pkg)
+            c_input("Press Enter to return to menu", newline=False, indicator="")
 
-        elif choice == '5':
-            explorer = LootExplorer(config.DOWNLOADS_PATH)
-            sessions = explorer.list_sessions()
-            if not sessions:
-                print(INDENT + "[-] No exfiltrated data found.")
-            else:
-                print(INDENT + "[ SELECT LOOT SESSION ]")
-                for i, s in enumerate(sessions): print(INDENT + f"{i+1}. {s}")
-                print()
-                s_sel = c_input("Enter number")
-                try:
-                    pkg_name = sessions[int(s_sel)-1]
-                    files = explorer.list_files(pkg_name)
-                    if not files:
-                        print(INDENT + "[-] No files found in this session.")
-                    else:
-                        print(f"\n{INDENT}[ FILES IN {pkg_name} ]")
-                        for i, f in enumerate(files): print(INDENT + f"{i+1}. {f}")
-                        print()
-                        f_sel = c_input("Select file number to view")
-                        file_rel_path = files[int(f_sel)-1]
-                        
-                        if file_rel_path.endswith(".db"):
-                            db_data = explorer.explore_db(pkg_name, file_rel_path)
-                            for table, content in db_data.get("tables", {}).items():
-                                print(f"\n{INDENT}--- TABLE: {table} ---")
-                                print(INDENT + " | ".join(content["columns"]))
-                                for row in content["rows"]: print(INDENT + " | ".join(map(str, row)))
-                        else:
-                            print(f"\n{INDENT}--- FILE CONTENT ---")
-                            print(explorer.view_xml(pkg_name, file_rel_path))
-                except: print(INDENT + "[-] Invalid selection.")
-
-        elif choice == '6':
+        elif choice == '5' and current_session:
             templates = HookTemplates()
             list_t = templates.list_templates()
             print(INDENT + "[ SELECT HOOK TEMPLATE ]")
@@ -251,33 +261,29 @@ def interactive_menu():
                 for line in code.split('\n'): print(INDENT + line)
                 print(INDENT + "-" * 20)
             except: print(INDENT + "[-] Invalid selection.")
+            c_input("Press Enter to return to menu", newline=False, indicator="")
 
-        elif choice == '7':
+        elif choice == '6' and current_session:
             scripts = FridaOrchestrator(None).list_scripts()
             print("\n" + INDENT + "[+] Script Library:\n")
             for s in scripts: print(INDENT + f"  - {s}")
-
-        elif choice == '8':
-            devices = list_adb_devices()
-            if not devices: print(INDENT + "[-] No devices found.")
-            else:
-                print(INDENT + "[ SELECT DEVICE ]")
-                for i, dev in enumerate(devices): print(INDENT + f"{i+1}. {dev['id']} ({dev['status']})")
-                print()
-                sel = c_input("Enter number")
-                try: config.ACTIVE_DEVICE_ID = devices[int(sel)-1]["id"]
-                except: pass
+            c_input("Press Enter to return to menu", newline=False, indicator="")
 
         elif choice == '0': break
-        print()
-        c_input("Press Enter to return to menu", newline=False, indicator="")
 
 def main():
     parser = argparse.ArgumentParser(description="🛡️  APex CLI", add_help=False)
     parser.add_argument('-h', '--help', action='help')
     subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser("scan").add_argument("apk_path")
+    subparsers.add_parser("inject").add_argument("package_name")
+    subparsers.add_parser("list-scripts")
+    subparsers.add_parser("exfiltrate").add_argument("package_name")
     if len(sys.argv) == 1: interactive_menu()
     else:
         args = parser.parse_args()
+        if args.command == "scan":
+            scanner = APKScanner(args.apk_path)
+            if scanner.decompile(): print_report(scanner.find_security_logic(progress_callback=print_progress_bar))
 
 if __name__ == "__main__": main()
