@@ -98,10 +98,12 @@ def print_report(data):
         print(INDENT + "  - Exported Components:")
         for comp in m["exported_components"][:5]: print(INDENT + f"    * {comp}")
     print()
-    if data.get("Sensitive Assets"):
-        print(INDENT + "[ SENSITIVE FILES IN ASSETS ]")
-        for asset in data["Sensitive Assets"]: print(INDENT + f"  - [!] {asset}")
+    if data.get("High-Risk Assets"):
+        print(INDENT + "[ HIGH-RISK FILES & ASSETS ]")
+        for asset in data["High-Risk Assets"]:
+            print(INDENT + f"  - [!] {asset}")
         print()
+
     print(INDENT + "[ CODE-LEVEL FINDINGS ]")
     findings_found = False
     for category, findings in data["Code Findings"].items():

@@ -63,20 +63,14 @@ class APKScanner:
             "Xamarin": ["libmonosgen-2.0.so", "assemblies/mscorlib.dll"],
             "Unity": ["libunity.so", "assets/bin/Data"],
             "Cordova/PhoneGap": ["assets/www/index.html", "assets/www/cordova.js"],
-            "Kotlin": ["kotlin/kotlin.kotlin_builtins", "kotlin/reflect/reflect.kotlin_builtins"]
+            "Kotlin": ["kotlin/kotlin.kotlin_builtins"]
         }
-
-        # Search for signatures in the decompiled directory
         for tech, files in signatures.items():
             for sig in files:
-                full_sig_path = os.path.join(self.output_dir, sig.replace("/", os.sep))
-                if os.path.exists(full_sig_path):
+                if os.path.exists(os.path.join(self.output_dir, sig.replace("/", os.sep))):
                     technologies.append(tech)
                     break
-        
-        if not technologies:
-            technologies.append("Native (Java/Kotlin)")
-        
+        if not technologies: technologies.append("Native (Java/Kotlin)")
         return list(set(technologies))
 
     def find_manifest_risks(self):
@@ -108,6 +102,7 @@ class APKScanner:
         except: return ""
 
     def find_security_logic(self, progress_callback=None):
+        """Comprehensive global scan for vulnerabilities with noise filtering"""
         patterns = {
             "Secrets & API Keys": {
                 "Google API Key": r"AIza[0-9A-Za-z-_]{35}",
@@ -125,31 +120,38 @@ class APKScanner:
             }
         }
         
-        report = {
-            "Technologies": self.detect_tech_stack(),
-            "Manifest Risks": self.find_manifest_risks(), 
-            "Code Findings": {}, 
-            "Sensitive Assets": []
-        }
+        report = {"Technologies": self.detect_tech_stack(), "Manifest Risks": self.find_manifest_risks(), "Code Findings": {}, "High-Risk Assets": []}
         
-        high_risk_names = [".env", "credentials", "secret", "password", "google-services", "client_secret", "auth_config"]
-        high_risk_exts = [".jks", ".keystore", ".p12", ".pem", ".cert", ".pkcs12"]
-        noise_dirs = ["res/anim", "res/color", "res/layout", "res/drawable", "res/values", "res/mipmap", "res/animator"]
+        # Filtering criteria to eliminate junk
+        high_risk_files = [".env", "credentials", "secret", "password", "google-services", "client_secret", "auth_config", "settings.json"]
+        high_risk_exts = [".jks", ".keystore", ".p12", ".pem", ".cert", ".pkcs12", ".key", ".pub"]
+        noise_dirs = ["res/anim", "res/color", "res/layout", "res/drawable", "res/values", "res/mipmap", "res/animator", "res/interpolator"]
         noise_prefixes = ["abc_", "mtrl_", "design_", "androidx_", "notification_", "messenger_"]
 
         all_scan_files = []
         for root, dirs, files in os.walk(self.output_dir):
             rel_dir = os.path.relpath(root, self.output_dir).replace("\\", "/")
+            
+            # Skip framework directories (Global Filter)
             if any(rel_dir.startswith(nd) for nd in noise_dirs): continue
+
             for file in files:
                 file_lower = file.lower()
                 rel_path = os.path.join(rel_dir, file)
+                
+                # Filter out framework noise files
                 if any(file_lower.startswith(np) for np in noise_prefixes): continue
-                is_sensitive = any(hr in file_lower for hr in high_risk_names) or any(file_lower.endswith(ext) for ext in high_risk_exts)
-                if is_sensitive: report["Sensitive Assets"].append(rel_path)
-                if file.endswith((".smali", ".env", ".json", ".xml", ".so")):
+
+                is_high_risk = any(hr in file_lower for hr in high_risk_files) or any(file_lower.endswith(ext) for ext in high_risk_exts)
+                
+                if is_high_risk:
+                    report["High-Risk Assets"].append(rel_path)
+                    all_scan_files.append(os.path.join(root, file))
+                elif file.endswith((".smali", ".env", ".json", ".xml", ".so")):
+                    # Add to deep scan list but don't label as high-risk asset unless it matched criteria above
                     all_scan_files.append(os.path.join(root, file))
 
+        # Run deep regex scan
         total_files = len(all_scan_files)
         for idx, file_path in enumerate(all_scan_files):
             if progress_callback: progress_callback(idx + 1, total_files)
@@ -162,7 +164,9 @@ class APKScanner:
                             matches = re.findall(regex, content)
                             if matches:
                                 clean_matches = list(set([str(m[1]) if isinstance(m, tuple) else str(m) for m in matches]))
-                                report["Code Findings"][category].append({"type": name, "file": os.path.relpath(file_path, self.output_dir), "matches": clean_matches[:5]})
+                                report["Code Findings"][category].append({
+                                    "type": name, "file": os.path.relpath(file_path, self.output_dir), "matches": clean_matches[:5]
+                                })
             except: pass
         
         self.save_report(report)
