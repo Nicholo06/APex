@@ -49,7 +49,7 @@ The goal of **APex** is to streamline the mobile application penetration testing
 
 1. Clone and Enter Folder:
    ```bash
-   git clone https://github.com/your-username/APex.git
+   git clone https://github.com/nxccks/APex.git
    cd APex
    ```
 
