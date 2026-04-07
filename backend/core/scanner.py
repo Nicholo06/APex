@@ -55,7 +55,6 @@ class APKScanner:
         except: return None
 
     def detect_tech_stack(self):
-        """Identifies the frameworks and technologies used by the app"""
         technologies = []
         signatures = {
             "Flutter": ["libflutter.so", "assets/flutter_assets"],
@@ -102,7 +101,7 @@ class APKScanner:
         except: return ""
 
     def find_security_logic(self, progress_callback=None):
-        """Comprehensive global scan for vulnerabilities with noise filtering"""
+        """Comprehensive global scan with false-positive filtering"""
         patterns = {
             "Secrets & API Keys": {
                 "Google API Key": r"AIza[0-9A-Za-z-_]{35}",
@@ -111,8 +110,8 @@ class APKScanner:
                 "Generic Secret": r"(?i)(api_key|secret_key|auth_token|db_password|access_token)\s*[:=]\s*['\"]([^'\"]+)['\"]"
             },
             "Network & API Endpoints": {
-                "HTTP Endpoint": r"http://[a-zA-Z0-9\./_-]+",
-                "Internal IP": r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"
+                "HTTP Endpoint": r"https?://[a-zA-Z0-9\./_-]+",
+                "Internal IP": r"\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b"
             },
             "Security Protections": {
                 "SSL Pinning Logic": r"X509TrustManager|checkServerTrusted|CertificatePinner",
@@ -120,53 +119,68 @@ class APKScanner:
             }
         }
         
+        # Strings to ignore (False Positives)
+        ignored_strings = [
+            "schemas.android.com", "www.w3.org", "google.com/search", 
+            "adobe.com", "ns.adobe.com"
+        ]
+        
+        # SDK paths to deprioritize/ignore for security logic
+        sdk_noise = [
+            "com/google/android/gms", "com/facebook", "androidx/", "android/support", 
+            "com/google/firebase", "io/sentry", "com/clevertap"
+        ]
+
         report = {"Technologies": self.detect_tech_stack(), "Manifest Risks": self.find_manifest_risks(), "Code Findings": {}, "High-Risk Assets": []}
         
-        # Filtering criteria to eliminate junk
-        high_risk_files = [".env", "credentials", "secret", "password", "google-services", "client_secret", "auth_config", "settings.json"]
-        high_risk_exts = [".jks", ".keystore", ".p12", ".pem", ".cert", ".pkcs12", ".key", ".pub"]
-        noise_dirs = ["res/anim", "res/color", "res/layout", "res/drawable", "res/values", "res/mipmap", "res/animator", "res/interpolator"]
-        noise_prefixes = ["abc_", "mtrl_", "design_", "androidx_", "notification_", "messenger_"]
+        high_risk_files = [".env", "credentials", "secret", "password", "google-services", "client_secret", "auth_config"]
+        high_risk_exts = [".jks", ".keystore", ".p12", ".pem", ".cert", ".key"]
+        noise_dirs = ["res/anim", "res/color", "res/layout", "res/drawable", "res/values", "res/mipmap", "res/animator"]
+        noise_prefixes = ["abc_", "mtrl_", "design_", "androidx_", "notification_"]
 
         all_scan_files = []
         for root, dirs, files in os.walk(self.output_dir):
             rel_dir = os.path.relpath(root, self.output_dir).replace("\\", "/")
-            
-            # Skip framework directories (Global Filter)
             if any(rel_dir.startswith(nd) for nd in noise_dirs): continue
-
             for file in files:
                 file_lower = file.lower()
-                rel_path = os.path.join(rel_dir, file)
-                
-                # Filter out framework noise files
                 if any(file_lower.startswith(np) for np in noise_prefixes): continue
-
                 is_high_risk = any(hr in file_lower for hr in high_risk_files) or any(file_lower.endswith(ext) for ext in high_risk_exts)
-                
-                if is_high_risk:
-                    report["High-Risk Assets"].append(rel_path)
-                    all_scan_files.append(os.path.join(root, file))
-                elif file.endswith((".smali", ".env", ".json", ".xml", ".so")):
-                    # Add to deep scan list but don't label as high-risk asset unless it matched criteria above
+                if is_high_risk: report["High-Risk Assets"].append(os.path.join(rel_dir, file))
+                if file.endswith((".smali", ".env", ".json", ".xml", ".so")):
                     all_scan_files.append(os.path.join(root, file))
 
-        # Run deep regex scan
         total_files = len(all_scan_files)
         for idx, file_path in enumerate(all_scan_files):
             if progress_callback: progress_callback(idx + 1, total_files)
             try:
+                rel_file_path = os.path.relpath(file_path, self.output_dir).replace("\\", "/")
+                
                 content = self.extract_strings_from_so(file_path) if file_path.endswith(".so") else open(file_path, 'r', encoding='utf-8', errors='ignore').read()
+                
                 if content:
                     for category, sub_patterns in patterns.items():
                         if category not in report["Code Findings"]: report["Code Findings"][category] = []
+                        
+                        # Skip security logic findings in massive SDKs to reduce noise
+                        if category == "Security Protections" and any(sdk in rel_file_path for sdk in sdk_noise):
+                            continue
+
                         for name, regex in sub_patterns.items():
                             matches = re.findall(regex, content)
                             if matches:
-                                clean_matches = list(set([str(m[1]) if isinstance(m, tuple) else str(m) for m in matches]))
-                                report["Code Findings"][category].append({
-                                    "type": name, "file": os.path.relpath(file_path, self.output_dir), "matches": clean_matches[:5]
-                                })
+                                clean_matches = []
+                                for m in matches:
+                                    val = str(m[1]) if isinstance(m, tuple) else str(m)
+                                    # Filter out standard namespaces and empty strings
+                                    if any(ig in val for ig in ignored_strings) or len(val) < 4:
+                                        continue
+                                    clean_matches.append(val)
+                                
+                                if clean_matches:
+                                    report["Code Findings"][category].append({
+                                        "type": name, "file": rel_file_path, "matches": list(set(clean_matches))[:5]
+                                    })
             except: pass
         
         self.save_report(report)
